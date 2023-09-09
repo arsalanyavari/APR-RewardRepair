@@ -3,7 +3,10 @@ import pandas as pd
 import torch, csv
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, RandomSampler, SequentialSampler
-from transformers import T5Tokenizer, T5ForConditionalGeneration
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
+# bert, ugic face
+
 from torch import cuda
 import gc
 import warnings
@@ -32,8 +35,9 @@ class CustomDataset(Dataset):
         patch = str(self.patch[index])
         patch = ' '.join(patch.split())
 
-        source = self.tokenizer.batch_encode_plus([buggy], max_length= self.source_len,pad_to_max_length=True,return_tensors='pt')
-        target = self.tokenizer.batch_encode_plus([patch], max_length= self.summ_len, pad_to_max_length=True,return_tensors='pt')
+        source = self.tokenizer.batch_encode_plus([buggy], max_length=self.source_len, padding='max_length', truncation=True, return_tensors='pt')
+        target = self.tokenizer.batch_encode_plus([patch], max_length=self.summ_len, padding='max_length', truncation=True, return_tensors='pt')
+
 
         source_ids = source['input_ids'].squeeze()
         source_mask = source['attention_mask'].squeeze()
@@ -168,7 +172,7 @@ def syntrain(epoch, tokenizer, model, device, loader, optimizer):
         ids = data['source_ids'].to(device, dtype = torch.long)
         mask = data['source_mask'].to(device, dtype = torch.long)
 
-        outputs = model(input_ids = ids, attention_mask = mask, decoder_input_ids=y_ids, labels=lm_labels)
+        outputs = model(input_ids=ids, attention_mask=mask, labels=lm_labels) 
         loss = outputs[0]
 
 
@@ -238,22 +242,26 @@ def syntactic(epoch,syn_train_data_path):
     # Process data
     df = pd.read_csv(syn_train_data_path,encoding='latin-1',delimiter='\t', header=0, error_bad_lines=False)
     print(df.head())
+    df.columns = df.columns.str.strip()
     df = df[['bugid','buggy','patch']]
     print(df.head())
     
 
     # tokenzier for encoding the text
     if epoch == 0 and 'CoCoNut' in syn_train_data_path:
-        model = T5ForConditionalGeneration.from_pretrained('t5-base', output_hidden_states=True)    
-        tokenizer = T5Tokenizer.from_pretrained('t5-base',truncation=True)
+        model = GPT2LMHeadModel.from_pretrained('gpt2', output_hidden_states=True)
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2', truncation=True)
+        tokenizer.pad_token = tokenizer.eos_token
         tokenizer.add_tokens(['{', '}','<','^','>=','<=','==','buggy:','context:'])
 
     else:
-        model = T5ForConditionalGeneration.from_pretrained(SAVE_MODEL, output_hidden_states=True)    
-        tokenizer = T5Tokenizer.from_pretrained(SAVE_MODEL,truncation=True)       
+        model = GPT2LMHeadModel.from_pretrained(SAVE_MODEL, output_hidden_states=True)
+        tokenizer = GPT2Tokenizer.from_pretrained(SAVE_MODEL, truncation=True)
+        tokenizer.pad_token = tokenizer.eos_token
+        
 
-
-    device = 'cuda' if cuda.is_available() else 'cpu'
+    #device = 'cuda' if cuda.is_available() else 'cpu'
+    device = 'cpu'
     model = model.to(device)
     
     # Creation of Dataset and Dataloader
@@ -286,11 +294,11 @@ def syntactic(epoch,syn_train_data_path):
         
 def semantic(epoch):   
     
-    gen = T5ForConditionalGeneration.from_pretrained(SAVE_MODEL, output_hidden_states=True)    
-    gen_tokenizer = T5Tokenizer.from_pretrained(SAVE_MODEL,truncation=True)
+    gen = GPT2LMHeadModel.from_pretrained(SAVE_MODEL, output_hidden_states=True)
+    gen_tokenizer = GPT2Tokenizer.from_pretrained(SAVE_MODEL, truncation=True)
     gen = gen.to(device)   
     gen_optimizer = torch.optim.Adam(params = gen.parameters(), lr=LEARNING_RATE)
-    data_loader=getGeneratorDataLoader(semantic_train_data_path,gen_tokenizer,1)   
+    data_loader=getGeneratorDataLoader(semantic_train_data_path,gen_tokenizer,1)
 
     print('\n---Semantic Training-----\nEPOCH %d\n--------' % (epoch+1))
 
@@ -306,7 +314,8 @@ def semantic(epoch):
         
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
-    device = 'cuda' if cuda.is_available() else 'cpu'
+    #device = 'cuda' if cuda.is_available() else 'cpu'
+    device = 'cpu'
     print(torch.__version__)
     gc.collect()
     torch.cuda.empty_cache()
