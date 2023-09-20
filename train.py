@@ -244,8 +244,8 @@ def syntactic(epoch,syn_train_data_path):
 
     # tokenzier for encoding the text
     if epoch == 0 and 'CoCoNut' in syn_train_data_path:
-        model = T5ForConditionalGeneration.from_pretrained('t5-base', output_hidden_states=True)    
-        tokenizer = T5Tokenizer.from_pretrained('t5-base',truncation=True)
+        model = T5ForConditionalGeneration.from_pretrained('t5-small', output_hidden_states=True)    
+        tokenizer = T5Tokenizer.from_pretrained('t5-small',truncation=True)
         tokenizer.add_tokens(['{', '}','<','^','>=','<=','==','buggy:','context:'])
 
     else:
